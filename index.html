@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VV DOUBLE 業績儀表板</title>
+
+<!-- Firebase compat（依品牌慣例，嚴禁 type="module"） -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js"></script>
+
+<style>
+:root { color-scheme: light; }
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:-apple-system,"Segoe UI","PingFang TC","Microsoft JhengHei",sans-serif; background:#f6f7f9; color:#1a1d21; padding:18px; line-height:1.5; }
+.wrap { max-width:1120px; margin:0 auto; }
+header { display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:6px; }
+h1 { font-size:20px; font-weight:700; }
+.sub { color:#6b7280; font-size:12.5px; }
+.note { font-size:12px; color:#8a8f98; margin-bottom:16px; }
+.grid-kpi { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:16px; }
+.card { background:#fff; border:1px solid #eceef1; border-radius:12px; padding:14px 16px; }
+.kpi-label { font-size:12px; color:#6b7280; margin-bottom:6px; }
+.kpi-val { font-size:21px; font-weight:700; letter-spacing:-0.3px; }
+.kpi-sub { font-size:11.5px; color:#8a8f98; margin-top:4px; }
+.section { background:#fff; border:1px solid #eceef1; border-radius:12px; padding:16px 18px; margin-bottom:16px; }
+.section h2 { font-size:14.5px; font-weight:700; margin-bottom:4px; }
+.section .desc { font-size:12px; color:#8a8f98; margin-bottom:12px; }
+.cols { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+@media(max-width:760px){ .cols{ grid-template-columns:1fr; } }
+.chart-box { position:relative; height:300px; } .chart-box.sm { height:260px; }
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th,td { text-align:right; padding:8px 10px; border-bottom:1px solid #f0f1f3; }
+th:first-child,td:first-child { text-align:left; }
+th { color:#6b7280; font-weight:600; font-size:12px; }
+.bar { height:7px; border-radius:4px; background:#eceef1; position:relative; overflow:hidden; min-width:60px; }
+.bar > span { position:absolute; left:0; top:0; bottom:0; border-radius:4px; }
+.pill { display:inline-block; font-size:11px; padding:2px 8px; border-radius:20px; font-weight:600; }
+.legend-pace { font-size:11.5px; color:#6b7280; margin-top:8px; }
+.overview { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+@media(max-width:760px){ .overview{ grid-template-columns:1fr; } }
+.ov-item { border-left:3px solid #2563eb; padding:2px 0 2px 12px; }
+.ov-item.amber{ border-color:#f59e0b; } .ov-item.green{ border-color:#16a34a; }
+.ov-item h3 { font-size:12px; color:#6b7280; font-weight:600; margin-bottom:3px; }
+.ov-item p { font-size:13px; line-height:1.55; }
+.rec-list { list-style:none; counter-reset:r; }
+.rec-list li { counter-increment:r; display:flex; gap:10px; align-items:flex-start; padding:10px 0; border-bottom:1px solid #f0f1f3; font-size:13.5px; line-height:1.55; }
+.rec-list li:last-child{ border-bottom:none; }
+.rec-list li::before { content:counter(r); flex:0 0 auto; width:22px; height:22px; border-radius:50%; background:#eef2ff; color:#2563eb; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; margin-top:1px; }
+.tag { display:inline-block; font-size:10.5px; font-weight:700; padding:1px 7px; border-radius:5px; margin-right:6px; vertical-align:1px; }
+.tag.hi{ background:#fee2e2; color:#dc2626; } .tag.mid{ background:#fef3c7; color:#b45309; } .tag.lo{ background:#f1f2f4; color:#6b7280; }
+.warn-list li { font-size:13px; padding:8px 0; border-bottom:1px solid #f0f1f3; display:flex; gap:8px; align-items:flex-start; }
+.warn-list li:last-child{ border-bottom:none; }
+.dot { width:8px; height:8px; border-radius:50%; margin-top:6px; flex:0 0 auto; }
+#gate { position:fixed; inset:0; background:#f6f7f9; display:flex; align-items:center; justify-content:center; z-index:99; }
+#gate .box { background:#fff; border:1px solid #eceef1; border-radius:14px; padding:26px; width:300px; text-align:center; }
+#gate input { width:100%; padding:10px; margin:14px 0; border:1px solid #d8dbdf; border-radius:8px; font-size:14px; }
+#gate button { width:100%; padding:10px; background:#2563eb; color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; }
+</style>
+</head>
+<body>
+
+<!-- ========== 密碼閘（品牌慣例：sessionStorage 記住登入） ========== -->
+<div id="gate">
+  <div class="box">
+    <div style="font-size:16px;font-weight:700">VV DOUBLE 業績儀表板</div>
+    <input id="pw" type="password" placeholder="請輸入密碼" onkeydown="if(event.key==='Enter')doLogin()">
+    <button onclick="doLogin()">進入</button>
+  </div>
+</div>
+
+<div class="wrap" id="app" style="display:none">
+  <header>
+    <h1>VV DOUBLE 業績儀表板</h1>
+    <span class="sub">本月進度 · 通路達標 · 行銷效率</span>
+  </header>
+  <div class="note" id="dataNote">載入中…</div>
+
+  <div class="grid-kpi" id="kpiRow"></div>
+
+  <div class="section">
+    <h2>業績概況</h2>
+    <div class="desc" id="ovDesc"></div>
+    <div class="overview" id="ovRow"></div>
+  </div>
+
+  <div class="section">
+    <h2>各通路本月達標進度</h2>
+    <div class="desc">月累積業績對月目標。灰色基準線為「時間進度」，低於它代表落後節奏。</div>
+    <table id="channelTable">
+      <thead><tr><th>通路</th><th>本月業績</th><th>月目標</th><th>達標率</th><th style="width:28%">進度</th><th>客單價</th><th>客單數</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="legend-pace" id="paceNote"></div>
+  </div>
+
+  <div class="cols">
+    <div class="section">
+      <h2>近數月 官+門市總業績</h2>
+      <div class="desc">整體營收趨勢（最新月為當月累積）</div>
+      <div class="chart-box"><canvas id="trendChart"></canvas></div>
+    </div>
+    <div class="section">
+      <h2>本月業績占比：官網 vs 全門市</h2>
+      <div class="desc">官網對全門市（7 間）比重，已排除蝦皮</div>
+      <div class="chart-box sm"><canvas id="shareChart"></canvas></div>
+      <div id="shareCaption" style="display:flex;gap:18px;justify-content:center;margin-top:10px;font-size:13px"></div>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div class="section">
+      <h2>官網行銷效率 ROAS 趨勢</h2>
+      <div class="desc">每投入 1 元廣告的回收倍數</div>
+      <div class="chart-box sm"><canvas id="roasChart"></canvas></div>
+    </div>
+    <div class="section">
+      <h2>異常與待辦提醒</h2>
+      <div class="desc">需要注意的訊號</div>
+      <ul class="warn-list" id="warnList"></ul>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>營運建議</h2>
+    <div class="desc">依本月數據整理，<span class="tag hi">高</span>立即處理 · <span class="tag mid">中</span>本月內安排 · <span class="tag lo">低</span>擇期處理</div>
+    <ol class="rec-list" id="recList"></ol>
+  </div>
+</div>
+
+<script>
+/* ====== 1. 密碼（請改成你要的，注意：公開 repo 原始碼看得到，僅作基本遮蔽） ====== */
+var PASSWORD = "vvdouble2026";
+function doLogin(){
+  var v = document.getElementById('pw').value;
+  if (v === PASSWORD || sessionStorage.getItem('dashIn') === '1'){
+    sessionStorage.setItem('dashIn','1');
+    document.getElementById('gate').style.display='none';
+    document.getElementById('app').style.display='block';
+    initFirebase();
+  } else { alert('密碼錯誤'); }
+}
+if (sessionStorage.getItem('dashIn') === '1'){ window.addEventListener('DOMContentLoaded', doLogin); }
+
+/* ====== 2. Firebase 設定（建好專案後把 console 給的整段貼到這裡） ====== */
+var firebaseConfig = {
+  apiKey: "AIzaSyDEZslniX-GHIjSqz-1W0Ddr8DfzrFLT5U",
+  authDomain: "vvdouble-dash.firebaseapp.com",
+  databaseURL: "https://vvdouble-dash-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "vvdouble-dash",
+  storageBucket: "vvdouble-dash.firebasestorage.app",
+  messagingSenderId: "185408079991",
+  appId: "1:185408079991:web:257f5bc39110f1611c1e72"
+};
+
+/* ====== 3. 預設資料（Firebase 尚未有資料時先顯示，之後每早任務會覆蓋） ====== */
+var DEFAULT_DATA = {
+  dataDate:"2026/06/11", month:"2026 年 6 月", dayOfMonth:11, daysInMonth:30,
+  kpis:[
+    {label:"官網本月業績", val:"NT$3,532,413", sub:"達標 50%（目標 7.0M）"},
+    {label:"門市合計", val:"NT$2,553,213", sub:"7 門市 + 蝦皮"},
+    {label:"官+門總業績", val:"NT$6,227,594", sub:"全通路本月累積"},
+    {label:"官網 ROAS", val:"32.7", sub:"廣告花費 NT$115,853"},
+    {label:"官網客單價", val:"NT$2,840", sub:"客單數 1,244"}
+  ],
+  overview:[
+    {tone:"blue", title:"官網", text:"本月累積 NT$3,532,413、達標 50%，領先時間進度。但高度集中於 6/2 新品上架日（單日 NT$2,589,418），近日日常單量偏低，需靠下一波檔期維持。"},
+    {tone:"amber", title:"全門市（7 間）", text:"合計 NT$3,074,760、占全站 47%。統一達標 63% 最穩；忠孝、新一中目標大但落後（31–32%），為本月達標主要風險。"},
+    {tone:"green", title:"行銷效率", text:"官網 ROAS 32.7、廣告收益占比 33.6%，體質健康。Google ROAS 27.8 明顯優於 FB 6.7，預算配置有調整空間。"}
+  ],
+  channels:[
+    {name:"官網", actual:3532413, target:7000000, aov:2840, orders:1244},
+    {name:"忠孝", actual:570464, target:1800000, aov:2987, orders:191},
+    {name:"統一", actual:566623, target:900000, aov:3256, orders:174},
+    {name:"桃園ATT", actual:234220, target:null, aov:2319, orders:101},
+    {name:"一中", actual:348859, target:800000, aov:2883, orders:121},
+    {name:"新一中", actual:521547, target:1700000, aov:2608, orders:200},
+    {name:"台南新天地", actual:314102, target:780000, aov:2804, orders:112},
+    {name:"新崛江", actual:518945, target:1200000, aov:3305, orders:157},
+    {name:"蝦皮", actual:5348, target:null, aov:891, orders:6}
+  ],
+  trend:{ labels:["7月","8月","9月","10月","11月","12月","26/1","2月","3月","4月","5月","6月*"],
+          values:[9434751,9987818,8616111,8828190,19019802,11242730,12110363,10242370,7150933,8011274,9607565,6227594] },
+  roas:{ labels:["1月","2月","3月","4月","5月","6月"], values:[24.03,22.14,20.02,20.15,25.59,32.68] },
+  recommendations:[
+    {level:"hi", title:"緊盯忠孝、新一中", text:"兩店月目標最大（1.8M／1.7M）但達標僅 31–32%，是本月最大缺口。優先檢視客流、檔期與人力。"},
+    {level:"hi", title:"官網別靠單日", text:"6/2 新品貢獻本月過半，扣除後動能偏弱。中旬／月底規劃第二波檔期維持熱度。"},
+    {level:"mid", title:"預算往 Google 傾斜", text:"Google ROAS 27.8 約為 FB 6.7 的 4 倍。評估把部分 FB 預算移向 Google，或重整 FB 素材與受眾。"},
+    {level:"mid", title:"門市衝量靠導客", text:"各店客單價 2.8–3.3k 已不低，瓶頸在來客數；以會員回購、門市活動拉客流。"},
+    {level:"mid", title:"複製統一打法", text:"統一客單價 3,256 全門市最高且達標領先，盤點其商品結構推廣到其他店。"},
+    {level:"lo", title:"補桃園 ATT 月目標", text:"目前未設目標，無法追蹤達標進度。"},
+    {level:"lo", title:"蝦皮去留決策", text:"本月僅 6 筆、NT$5,348，量能極低，評估收掉或集中資源。"}
+  ],
+  warnings:[
+    {level:"red", text:"忠孝、新一中 達標僅 31–32%，落後時間進度。"},
+    {level:"amber", text:"桃園 ATT、蝦皮 未設月目標，無法追蹤達標。"},
+    {level:"green", text:"統一 達標 63% 領先節奏，可作標竿。"}
+  ]
+};
+
+/* ====== 4. 初始化與渲染 ====== */
+var charts = {};
+function initFirebase(){
+  var connected = false;
+  try {
+    if (firebaseConfig.databaseURL && firebaseConfig.databaseURL.indexOf('http') === 0){
+      firebase.initializeApp(firebaseConfig);
+      firebase.database().ref('/yeji').on('value', function(snap){
+        var d = snap.val();
+        render(d && d.channels ? d : DEFAULT_DATA);
+      });
+      connected = true;
+    }
+  } catch(e){ console.warn('Firebase 尚未設定或連線失敗，顯示預設資料', e); }
+  if (!connected) render(DEFAULT_DATA);
+}
+
+function fmt(n){ return "NT$" + Math.round(n).toLocaleString(); }
+function fmtM(n){ return "NT$" + (n/1000000).toFixed(2) + "M"; }
+
+function render(d){
+  var pace = Math.round(d.dayOfMonth / d.daysInMonth * 100);
+  document.getElementById('dataNote').textContent =
+    "資料截至 " + d.dataDate + " · " + d.month + " 第 " + d.dayOfMonth + " / " + d.daysInMonth + " 天 · 每日早上自動更新";
+
+  // KPI
+  document.getElementById('kpiRow').innerHTML = d.kpis.map(function(k){
+    return '<div class="card"><div class="kpi-label">'+k.label+'</div><div class="kpi-val">'+k.val+'</div><div class="kpi-sub">'+(k.sub||'')+'</div></div>';
+  }).join('');
+
+  // 業績概況
+  document.getElementById('ovDesc').textContent = "截至 " + d.dataDate + "（第 " + d.dayOfMonth + " / " + d.daysInMonth + " 天）的整體解讀";
+  document.getElementById('ovRow').innerHTML = (d.overview||[]).map(function(o){
+    var cls = o.tone==='amber'?' amber':o.tone==='green'?' green':'';
+    return '<div class="ov-item'+cls+'"><h3>'+o.title+'</h3><p>'+o.text+'</p></div>';
+  }).join('');
+
+  // 各通路（固定順序，依資料順序）
+  var ch = d.channels.map(function(c){ c.rate = c.target ? c.actual/c.target*100 : null; return c; });
+  var colorFor = function(r){ return r===null?'#c4c8ce':r>=pace?'#16a34a':r>=pace-8?'#f59e0b':'#dc2626'; };
+  document.querySelector('#channelTable tbody').innerHTML = ch.map(function(c){
+    var w = c.rate===null?0:Math.min(c.rate,100), col=colorFor(c.rate);
+    var pill = c.rate===null
+      ? '<span class="pill" style="background:#f1f2f4;color:#8a8f98">無目標</span>'
+      : '<span class="pill" style="background:'+col+'22;color:'+col+'">'+Math.round(c.rate)+'%</span>';
+    return '<tr><td><strong>'+c.name+'</strong></td><td>'+fmt(c.actual)+'</td><td>'+(c.target?fmt(c.target):'—')+'</td><td>'+pill+'</td>'+
+      '<td><div class="bar"><span style="width:'+w+'%;background:'+col+'"></span><span style="left:'+pace+'%;width:2px;background:#9aa0a6;border-radius:0"></span></div></td>'+
+      '<td>'+fmt(c.aov)+'</td><td>'+c.orders.toLocaleString()+'</td></tr>';
+  }).join('');
+  document.getElementById('paceNote').textContent = "時間進度基準 ≈ " + pace + "%（第 "+d.dayOfMonth+" 天）。綠＝領先，黃＝接近，紅＝落後。";
+
+  // 趨勢
+  drawLine('trendChart', d.trend.labels, d.trend.values.map(function(v){return v/1000000;}), '#2563eb', 'M');
+  // 占比：官網 vs 全門市（排除蝦皮）
+  var online = (ch.find(function(c){return c.name==='官網';})||{actual:0}).actual;
+  var store = ch.filter(function(c){return c.name!=='官網'&&c.name!=='蝦皮';}).reduce(function(s,c){return s+c.actual;},0);
+  drawShare(online, store);
+  // ROAS
+  drawBar('roasChart', d.roas.labels, d.roas.values);
+
+  // 異常
+  var dotColor = {red:'#dc2626',amber:'#f59e0b',green:'#16a34a'};
+  document.getElementById('warnList').innerHTML = (d.warnings||[]).map(function(w){
+    return '<li><span class="dot" style="background:'+(dotColor[w.level]||'#6b7280')+'"></span><span>'+w.text+'</span></li>';
+  }).join('');
+
+  // 營運建議
+  document.getElementById('recList').innerHTML = (d.recommendations||[]).map(function(r){
+    var t = r.level==='hi'?'<span class="tag hi">高</span>':r.level==='mid'?'<span class="tag mid">中</span>':'<span class="tag lo">低</span>';
+    return '<li><span>'+t+'<strong>'+r.title+'</strong>：'+r.text+'</span></li>';
+  }).join('');
+}
+
+function drawLine(id, labels, vals, color, suffix){
+  if(charts[id]) charts[id].destroy();
+  charts[id]=new Chart(document.getElementById(id),{type:'line',
+    data:{labels:labels,datasets:[{data:vals,borderColor:color,backgroundColor:color+'18',fill:true,tension:0.3,pointRadius:3,borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return 'NT$'+c.parsed.y.toFixed(2)+(suffix||'');}}}},
+      scales:{y:{ticks:{callback:function(v){return v+(suffix||'');}},grid:{color:'#f0f1f3'}},x:{grid:{display:false}}}}});
+}
+function drawBar(id, labels, vals){
+  if(charts[id]) charts[id].destroy();
+  charts[id]=new Chart(document.getElementById(id),{type:'bar',
+    data:{labels:labels,datasets:[{data:vals,backgroundColor:vals.map(function(v){return v>=20?'#16a34a':'#f59e0b';}),borderRadius:6}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return 'ROAS '+c.parsed.y;}}}},
+      scales:{y:{grid:{color:'#f0f1f3'}},x:{grid:{display:false}}}}});
+}
+function drawShare(online, store){
+  if(charts.shareChart) charts.shareChart.destroy();
+  var total=online+store, op=total?Math.round(online/total*100):0, sp=100-op;
+  charts.shareChart=new Chart(document.getElementById('shareChart'),{type:'doughnut',
+    data:{labels:['官網','全門市（7 間）'],datasets:[{data:[online,store],backgroundColor:['#2563eb','#16a34a'],borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:function(c){return c.label+': '+fmtM(c.parsed)+' ('+Math.round(c.parsed/total*100)+'%)';}}}}}});
+  document.getElementById('shareCaption').innerHTML =
+    '<div style="text-align:center"><div style="color:#2563eb;font-weight:700;font-size:22px">'+op+'%</div><div style="color:#6b7280;font-size:12px">官網 '+fmtM(online)+'</div></div>'+
+    '<div style="text-align:center"><div style="color:#16a34a;font-weight:700;font-size:22px">'+sp+'%</div><div style="color:#6b7280;font-size:12px">全門市 '+fmtM(store)+'</div></div>';
+}
+</script>
+</body>
+</html>
