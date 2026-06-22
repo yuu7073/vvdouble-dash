@@ -288,46 +288,69 @@ function exportPNG(){
   var colorFor = function(r){ return r===null?'#c4c8ce':r>=pace?'#16a34a':r>=pace-8?'#f59e0b':'#dc2626'; };
   var FF = '-apple-system,"Segoe UI","PingFang TC","Microsoft JhengHei",sans-serif';
 
-  var html = '<div style="padding:28px 30px;font-family:'+FF+';color:#1a1d21;background:#fff;width:760px">';
-  html += '<div style="border-bottom:2px solid #1a1d21;padding-bottom:12px;margin-bottom:18px">'
-       + '<div style="font-size:24px;font-weight:800;letter-spacing:-0.5px">VV DOUBLE 業績</div>'
-       + '<div style="font-size:13px;color:#6b7280;margin-top:4px">資料截止 '+d.dataDate+' · '+d.month+' 第 '+d.dayOfMonth+' / '+d.daysInMonth+' 天</div></div>';
+  var sigBg = {'#dc2626':'#fcecec','#16a34a':'#e6f5ee','#2563eb':'#e9f2fb'};
+  var sigTitle = {'#dc2626':'#a32d2d','#16a34a':'#0f6e56','#2563eb':'#185fa5'};
+  var sigBody = {'#dc2626':'#5f1f1f','#16a34a':'#08433a','#2563eb':'#0c447c'};
+  var W = 420;
 
-  html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:22px">';
-  (d.kpis||[]).forEach(function(k){
-    html += '<div style="flex:1 1 30%;min-width:206px;border:1px solid #eceef1;border-radius:10px;padding:12px 14px">'
-         + '<div style="font-size:12px;color:#6b7280;margin-bottom:5px">'+k.label+'</div>'
-         + '<div style="font-size:20px;font-weight:700">'+k.val+'</div>'
-         + '<div style="font-size:11px;color:#8a8f98;margin-top:3px">'+(k.sub||'')+'</div></div>';
+  var html = '<div style="width:'+W+'px;background:#fff;font-family:'+FF+';color:#1a1d21">';
+
+  /* 深色標題列 */
+  html += '<div style="background:#111418;color:#fff;padding:20px 20px 18px">'
+       + '<div style="font-size:13px;letter-spacing:2px;color:#9aa0a6">VV DOUBLE</div>'
+       + '<div style="font-size:23px;font-weight:800;margin-top:3px">當日業績重點</div>'
+       + '<div style="font-size:13px;color:#c4c8cc;margin-top:9px">資料截止 '+d.dataDate+'　·　第 '+d.dayOfMonth+' / '+d.daysInMonth+' 天</div></div>';
+
+  html += '<div style="padding:18px">';
+
+  /* 總業績大字（第一張 KPI） */
+  var k0 = (d.kpis && d.kpis[0]) || {label:'總業績', val:'-'};
+  html += '<div style="background:#f4f6f8;border-radius:14px;padding:15px 17px">'
+       + '<div style="font-size:13px;color:#6b7280">'+k0.label+'</div>'
+       + '<div style="font-size:30px;font-weight:800;letter-spacing:-0.5px;margin-top:3px">'+k0.val+'</div></div>';
+
+  /* 其餘 KPI 2 欄 */
+  html += '<div style="display:flex;flex-wrap:wrap;gap:11px;margin-top:11px">';
+  (d.kpis||[]).slice(1).forEach(function(k){
+    html += '<div style="flex:1 1 44%;min-width:160px;background:#f4f6f8;border-radius:12px;padding:13px 14px">'
+         + '<div style="font-size:12px;color:#6b7280">'+k.label+'</div>'
+         + '<div style="font-size:20px;font-weight:700;margin-top:3px">'+k.val+'</div>'
+         + '<div style="font-size:12px;color:#6b7280;margin-top:4px">'+(k.sub||'')+'</div></div>';
   });
   html += '</div>';
 
-  html += '<div style="font-size:15px;font-weight:700;margin-bottom:3px">各通路本月達標進度</div>';
-  html += '<div style="font-size:11.5px;color:#8a8f98;margin-bottom:13px">灰線為時間進度基準 '+pace+'%　綠＝領先 黃＝接近 紅＝落後</div>';
+  /* 各通路達標進度（堆疊式） */
+  html += '<div style="font-size:16px;font-weight:700;margin:22px 0 4px">各通路達標進度</div>';
+  html += '<div style="font-size:12px;color:#9aa0a6;margin-bottom:13px">灰線 = 時間進度基準 '+pace+'%</div>';
   (d.channels||[]).forEach(function(c){
     var rate = c.target? c.actual/c.target*100 : null;
     var col = colorFor(rate);
     var w = rate===null?0:Math.min(rate,100);
     var rateTxt = rate===null?'無目標':Math.round(rate)+'%';
-    html += '<div style="margin-bottom:11px">'
-      + '<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px">'
-      + '<span style="font-weight:600">'+c.name+'</span>'
-      + '<span style="color:#6b7280">'+fmt(c.actual)+(c.target?' / '+fmt(c.target):'')+'　<span style="color:'+(rate===null?'#8a8f98':col)+';font-weight:700">'+rateTxt+'</span></span></div>'
-      + '<div style="position:relative;height:9px;background:#eceef1;border-radius:5px;overflow:hidden">'
-      + '<div style="position:absolute;left:0;top:0;bottom:0;width:'+w+'%;background:'+col+';border-radius:5px"></div>'
-      + '<div style="position:absolute;left:'+pace+'%;top:0;bottom:0;width:2px;background:#9aa0a6"></div></div></div>';
+    var onBar = rate!==null && rate>55;
+    html += '<div style="margin-bottom:13px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:baseline">'
+      + '<span style="font-size:14px;font-weight:600">'+c.name+'</span>'
+      + '<span style="font-size:12px;color:#6b7280">'+fmt(c.actual)+(c.target?' / '+fmt(c.target):'')+'</span></div>'
+      + '<div style="position:relative;height:15px;background:#eef0f2;border-radius:8px;margin-top:5px">'
+      + '<div style="position:absolute;left:0;top:0;bottom:0;width:'+w+'%;background:'+col+';border-radius:8px"></div>'
+      + '<div style="position:absolute;left:'+pace+'%;top:-1px;bottom:-1px;width:2px;background:#9aa0a6"></div>'
+      + '<span style="position:absolute;right:7px;top:0;font-size:11px;font-weight:700;line-height:15px;color:'+(onBar?'#fff':(rate===null?'#8a8f98':col))+'">'+rateTxt+'</span>'
+      + '</div></div>';
   });
 
+  /* 重點訊號 3 條（色塊卡） */
   var sigs = pickSignals(d);
-  html += '<div style="font-size:15px;font-weight:700;margin:22px 0 10px">重點訊號</div>';
+  html += '<div style="font-size:16px;font-weight:700;margin:22px 0 11px">重點訊號</div>';
   sigs.forEach(function(s){
-    html += '<div style="display:flex;gap:9px;align-items:flex-start;margin-bottom:10px;font-size:13px;line-height:1.55">'
-      + '<span style="flex:0 0 auto;width:9px;height:9px;border-radius:50%;background:'+s.c+';margin-top:5px"></span>'
-      + '<span><b style="color:'+s.c+'">'+s.label+'</b>　'+s.t+'</span></div>';
+    var bg = sigBg[s.c]||'#f1f2f4', tc = sigTitle[s.c]||'#444', bd = sigBody[s.c]||'#444';
+    html += '<div style="border-left:4px solid '+s.c+';background:'+bg+';border-radius:0 10px 10px 0;padding:11px 14px;margin-bottom:9px">'
+      + '<div style="font-size:13px;font-weight:700;color:'+tc+'">'+s.label+'</div>'
+      + '<div style="font-size:13px;color:'+bd+';margin-top:3px;line-height:1.55">'+s.t+'</div></div>';
   });
 
-  html += '<div style="margin-top:22px;font-size:10.5px;color:#b0b4ba;text-align:right">VV DOUBLE 業績儀表板 · 自動產生</div>';
-  html += '</div>';
+  html += '<div style="text-align:center;font-size:11px;color:#b0b4b9;margin-top:16px">vvdouble-'+(''+d.dataDate).replace(/\//g,'-')+'.png</div>';
+  html += '</div></div>';
 
   var card = document.getElementById('expCard');
   card.innerHTML = html;
