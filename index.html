@@ -10,6 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 
 <style>
 :root { color-scheme: light; }
@@ -62,6 +63,8 @@ th { color:#6b7280; font-weight:600; font-size:12px; }
 #gate input { width:100%; padding:10px; margin-top:12px; border:1px solid #d8dbdf; border-radius:8px; font-size:14px; }
 #gate button { width:100%; padding:10px; margin-top:14px; background:#2563eb; color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; }
 #gate .err { color:#dc2626; font-size:12px; margin-top:10px; min-height:16px; }
+.expbtn { font-size:12px; color:#fff; background:#2563eb; border:none; border-radius:7px; padding:5px 11px; cursor:pointer; font-weight:600; margin-right:8px; }
+#expCard { position:absolute; left:-10000px; top:0; }
 </style>
 </head>
 <body>
@@ -81,7 +84,7 @@ th { color:#6b7280; font-weight:600; font-size:12px; }
 <div class="wrap" id="app" style="display:none">
   <header>
     <h1>VV DOUBLE 業績儀表板</h1>
-    <span class="sub">本月進度 · 通路達標 · 行銷效率 &nbsp; <button class="logout" onclick="firebase.auth().signOut()">登出</button></span>
+    <span class="sub">本月進度 · 通路達標 · 行銷效率 &nbsp; <button class="expbtn" onclick="exportPNG()">匯出當日重點</button><button class="logout" onclick="firebase.auth().signOut()">登出</button></span>
   </header>
   <div class="note" id="dataNote">載入中…</div>
 
@@ -137,6 +140,8 @@ th { color:#6b7280; font-weight:600; font-size:12px; }
   </div>
 </div>
 
+<div id="expCard"></div>
+
 <script>
 /* ====== Firebase 設定 ====== */
 var firebaseConfig = {
@@ -189,6 +194,7 @@ function fmt(n){ return "NT$" + Math.round(n).toLocaleString(); }
 function fmtM(n){ return "NT$" + (n/1000000).toFixed(2) + "M"; }
 
 function render(d){
+  window.__yeji = d;
   var pace = Math.round(d.dayOfMonth / d.daysInMonth * 100);
   document.getElementById('dataNote').textContent =
     "資料截至 " + d.dataDate + " · " + d.month + " 第 " + d.dayOfMonth + " / " + d.daysInMonth + " 天 · 每日早上自動更新";
@@ -257,6 +263,81 @@ function drawShare(online, store){
   document.getElementById('shareCaption').innerHTML =
     '<div style="text-align:center"><div style="color:#2563eb;font-weight:700;font-size:22px">'+op+'%</div><div style="color:#6b7280;font-size:12px">官網 '+fmtM(online)+'</div></div>'+
     '<div style="text-align:center"><div style="color:#16a34a;font-weight:700;font-size:22px">'+sp+'%</div><div style="color:#6b7280;font-size:12px">全門市 '+fmtM(store)+'</div></div>';
+}
+
+/* ====== 匯出當日重點 PNG ====== */
+function pickSignals(d){
+  var pace = Math.round(d.dayOfMonth/d.daysInMonth*100);
+  var ch = (d.channels||[]).map(function(c){ return {name:c.name, rate:(c.target? c.actual/c.target*100 : null)}; });
+  var withT = ch.filter(function(c){ return c.rate!==null; });
+  var lag = withT.slice().sort(function(a,b){ return a.rate-b.rate; });
+  var lead = withT.slice().sort(function(a,b){ return b.rate-a.rate; });
+  var recs = d.recommendations||[];
+  var mk = recs.filter(function(r){ return /Google|FB|預算|ROAS|檔期|官網|廣告/.test((r.title||'')+(r.text||'')); })[0] || recs[0];
+  var out = [];
+  if (lag[0]) out.push({c:'#dc2626', label:'落後風險', t: lag.slice(0,2).map(function(c){ return c.name+' '+Math.round(c.rate)+'%'; }).join('、') + '（低於時間進度 '+pace+'%）'});
+  if (lead[0]) out.push({c:'#16a34a', label:'領先標竿', t: lead[0].name+' 達標 '+Math.round(lead[0].rate)+'%，可複製其打法'});
+  if (mk) out.push({c:'#2563eb', label:'建議', t: mk.title+'：'+mk.text});
+  return out.slice(0,3);
+}
+
+function exportPNG(){
+  var d = window.__yeji;
+  if (!d || !d.channels){ alert('資料尚未載入，請稍候再試'); return; }
+  var pace = Math.round(d.dayOfMonth/d.daysInMonth*100);
+  var colorFor = function(r){ return r===null?'#c4c8ce':r>=pace?'#16a34a':r>=pace-8?'#f59e0b':'#dc2626'; };
+  var FF = '-apple-system,"Segoe UI","PingFang TC","Microsoft JhengHei",sans-serif';
+
+  var html = '<div style="padding:28px 30px;font-family:'+FF+';color:#1a1d21;background:#fff;width:760px">';
+  html += '<div style="border-bottom:2px solid #1a1d21;padding-bottom:12px;margin-bottom:18px">'
+       + '<div style="font-size:24px;font-weight:800;letter-spacing:-0.5px">VV DOUBLE 業績</div>'
+       + '<div style="font-size:13px;color:#6b7280;margin-top:4px">資料截止 '+d.dataDate+' · '+d.month+' 第 '+d.dayOfMonth+' / '+d.daysInMonth+' 天</div></div>';
+
+  html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:22px">';
+  (d.kpis||[]).forEach(function(k){
+    html += '<div style="flex:1 1 30%;min-width:206px;border:1px solid #eceef1;border-radius:10px;padding:12px 14px">'
+         + '<div style="font-size:12px;color:#6b7280;margin-bottom:5px">'+k.label+'</div>'
+         + '<div style="font-size:20px;font-weight:700">'+k.val+'</div>'
+         + '<div style="font-size:11px;color:#8a8f98;margin-top:3px">'+(k.sub||'')+'</div></div>';
+  });
+  html += '</div>';
+
+  html += '<div style="font-size:15px;font-weight:700;margin-bottom:3px">各通路本月達標進度</div>';
+  html += '<div style="font-size:11.5px;color:#8a8f98;margin-bottom:13px">灰線為時間進度基準 '+pace+'%　綠＝領先 黃＝接近 紅＝落後</div>';
+  (d.channels||[]).forEach(function(c){
+    var rate = c.target? c.actual/c.target*100 : null;
+    var col = colorFor(rate);
+    var w = rate===null?0:Math.min(rate,100);
+    var rateTxt = rate===null?'無目標':Math.round(rate)+'%';
+    html += '<div style="margin-bottom:11px">'
+      + '<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px">'
+      + '<span style="font-weight:600">'+c.name+'</span>'
+      + '<span style="color:#6b7280">'+fmt(c.actual)+(c.target?' / '+fmt(c.target):'')+'　<span style="color:'+(rate===null?'#8a8f98':col)+';font-weight:700">'+rateTxt+'</span></span></div>'
+      + '<div style="position:relative;height:9px;background:#eceef1;border-radius:5px;overflow:hidden">'
+      + '<div style="position:absolute;left:0;top:0;bottom:0;width:'+w+'%;background:'+col+';border-radius:5px"></div>'
+      + '<div style="position:absolute;left:'+pace+'%;top:0;bottom:0;width:2px;background:#9aa0a6"></div></div></div>';
+  });
+
+  var sigs = pickSignals(d);
+  html += '<div style="font-size:15px;font-weight:700;margin:22px 0 10px">重點訊號</div>';
+  sigs.forEach(function(s){
+    html += '<div style="display:flex;gap:9px;align-items:flex-start;margin-bottom:10px;font-size:13px;line-height:1.55">'
+      + '<span style="flex:0 0 auto;width:9px;height:9px;border-radius:50%;background:'+s.c+';margin-top:5px"></span>'
+      + '<span><b style="color:'+s.c+'">'+s.label+'</b>　'+s.t+'</span></div>';
+  });
+
+  html += '<div style="margin-top:22px;font-size:10.5px;color:#b0b4ba;text-align:right">VV DOUBLE 業績儀表板 · 自動產生</div>';
+  html += '</div>';
+
+  var card = document.getElementById('expCard');
+  card.innerHTML = html;
+  html2canvas(card.firstChild, {scale:2, backgroundColor:'#ffffff'}).then(function(canvas){
+    var link = document.createElement('a');
+    link.download = 'vvdouble-'+(''+d.dataDate).replace(/\//g,'-')+'.png';
+    link.href = canvas.toDataURL('image/png');
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    card.innerHTML = '';
+  }).catch(function(e){ card.innerHTML=''; alert('匯出失敗：'+(e&&e.message)); });
 }
 </script>
 </body>
