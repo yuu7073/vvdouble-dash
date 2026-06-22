@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VV DOUBLE 業績資料寫入</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+body{font-family:-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;background:#f6f7f9;color:#1a1d21;padding:24px;line-height:1.6}
+.box{max-width:420px;margin:60px auto;background:#fff;border:1px solid #eceef1;border-radius:14px;padding:24px;text-align:center}
+input{width:100%;padding:10px;margin-top:10px;border:1px solid #d8dbdf;border-radius:8px;font-size:14px}
+button{width:100%;padding:10px;margin-top:12px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer}
+#status{margin-top:14px;font-size:13px;color:#6b7280}
+</style>
+</head>
+<body>
+<div class="box">
+  <div style="font-weight:700">業績資料寫入頁</div>
+  <div style="font-size:12px;color:#8a8f98;margin-top:4px">供每日任務寫入用。此頁不顯示任何數字。</div>
+  <div id="loginArea" style="display:none">
+    <input id="email" type="email" placeholder="Email" autocomplete="username">
+    <input id="pw" type="password" placeholder="密碼" autocomplete="current-password">
+    <button onclick="doLogin()">登入</button>
+  </div>
+  <div id="status">初始化中…</div>
+</div>
+<script>
+var firebaseConfig = {
+  apiKey: "AIzaSyDEZslniX-GHIjSqz-1W0Ddr8DfzrFLT5U",
+  authDomain: "vvdouble-dash.firebaseapp.com",
+  databaseURL: "https://vvdouble-dash-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "vvdouble-dash",
+  storageBucket: "vvdouble-dash.firebasestorage.app",
+  messagingSenderId: "185408079991",
+  appId: "1:185408079991:web:257f5bc39110f1611c1e72"
+};
+firebase.initializeApp(firebaseConfig);
+
+firebase.auth().onAuthStateChanged(function(u){
+  if (u){
+    document.getElementById('loginArea').style.display='none';
+    document.getElementById('status').textContent = '已登入：' + u.email + '（可寫入）';
+  } else {
+    document.getElementById('loginArea').style.display='block';
+    document.getElementById('status').textContent = '未登入，請登入以授權寫入';
+  }
+});
+function doLogin(){
+  firebase.auth().signInWithEmailAndPassword(
+    document.getElementById('email').value.trim(),
+    document.getElementById('pw').value
+  ).catch(function(e){ document.getElementById('status').textContent='登入失敗：'+e.code; });
+}
+// 供自動化呼叫：window.writeYeji(dataObject) → 回傳 Promise
+window.writeYeji = function(data){
+  if (!firebase.auth().currentUser) return Promise.reject(new Error('NOT_LOGGED_IN'));
+  data.updatedAt = Date.now();
+  return firebase.database().ref('/yeji').set(data).then(function(){ return 'OK'; });
+};
+window.authedEmail = function(){ return firebase.auth().currentUser ? firebase.auth().currentUser.email : null; };
+</script>
+</body>
+</html>
