@@ -7,8 +7,8 @@
 
 <!-- Firebase compat（依品牌慣例，嚴禁 type="module"） -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-<!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js"></script>
 
 <style>
@@ -20,6 +20,7 @@ header { display:flex; align-items:baseline; justify-content:space-between; flex
 h1 { font-size:20px; font-weight:700; }
 .sub { color:#6b7280; font-size:12.5px; }
 .note { font-size:12px; color:#8a8f98; margin-bottom:16px; }
+.logout { font-size:12px; color:#2563eb; cursor:pointer; background:none; border:none; }
 .grid-kpi { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:16px; }
 .card { background:#fff; border:1px solid #eceef1; border-radius:12px; padding:14px 16px; }
 .kpi-label { font-size:12px; color:#6b7280; margin-bottom:6px; }
@@ -55,26 +56,32 @@ th { color:#6b7280; font-weight:600; font-size:12px; }
 .warn-list li:last-child{ border-bottom:none; }
 .dot { width:8px; height:8px; border-radius:50%; margin-top:6px; flex:0 0 auto; }
 #gate { position:fixed; inset:0; background:#f6f7f9; display:flex; align-items:center; justify-content:center; z-index:99; }
-#gate .box { background:#fff; border:1px solid #eceef1; border-radius:14px; padding:26px; width:300px; text-align:center; }
-#gate input { width:100%; padding:10px; margin:14px 0; border:1px solid #d8dbdf; border-radius:8px; font-size:14px; }
-#gate button { width:100%; padding:10px; background:#2563eb; color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; }
+#gate .box { background:#fff; border:1px solid #eceef1; border-radius:14px; padding:26px; width:320px; text-align:center; }
+#gate .box .t { font-size:16px; font-weight:700; }
+#gate .box .s { font-size:12px; color:#8a8f98; margin-top:4px; }
+#gate input { width:100%; padding:10px; margin-top:12px; border:1px solid #d8dbdf; border-radius:8px; font-size:14px; }
+#gate button { width:100%; padding:10px; margin-top:14px; background:#2563eb; color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; }
+#gate .err { color:#dc2626; font-size:12px; margin-top:10px; min-height:16px; }
 </style>
 </head>
 <body>
 
-<!-- ========== 密碼閘（品牌慣例：sessionStorage 記住登入） ========== -->
+<!-- ========== Firebase 登入閘（資料需登入才讀得到） ========== -->
 <div id="gate">
   <div class="box">
-    <div style="font-size:16px;font-weight:700">VV DOUBLE 業績儀表板</div>
-    <input id="pw" type="password" placeholder="請輸入密碼" onkeydown="if(event.key==='Enter')doLogin()">
-    <button onclick="doLogin()">進入</button>
+    <div class="t">VV DOUBLE 業績儀表板</div>
+    <div class="s">請登入授權帳號</div>
+    <input id="email" type="email" placeholder="Email" autocomplete="username">
+    <input id="pw" type="password" placeholder="密碼" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <button onclick="doLogin()">登入</button>
+    <div class="err" id="err"></div>
   </div>
 </div>
 
 <div class="wrap" id="app" style="display:none">
   <header>
     <h1>VV DOUBLE 業績儀表板</h1>
-    <span class="sub">本月進度 · 通路達標 · 行銷效率</span>
+    <span class="sub">本月進度 · 通路達標 · 行銷效率 &nbsp; <button class="logout" onclick="firebase.auth().signOut()">登出</button></span>
   </header>
   <div class="note" id="dataNote">載入中…</div>
 
@@ -131,20 +138,7 @@ th { color:#6b7280; font-weight:600; font-size:12px; }
 </div>
 
 <script>
-/* ====== 1. 密碼（請改成你要的，注意：公開 repo 原始碼看得到，僅作基本遮蔽） ====== */
-var PASSWORD = "vvdouble2026";
-function doLogin(){
-  var v = document.getElementById('pw').value;
-  if (v === PASSWORD || sessionStorage.getItem('dashIn') === '1'){
-    sessionStorage.setItem('dashIn','1');
-    document.getElementById('gate').style.display='none';
-    document.getElementById('app').style.display='block';
-    initFirebase();
-  } else { alert('密碼錯誤'); }
-}
-if (sessionStorage.getItem('dashIn') === '1'){ window.addEventListener('DOMContentLoaded', doLogin); }
-
-/* ====== 2. Firebase 設定（建好專案後把 console 給的整段貼到這裡） ====== */
+/* ====== Firebase 設定 ====== */
 var firebaseConfig = {
   apiKey: "AIzaSyDEZslniX-GHIjSqz-1W0Ddr8DfzrFLT5U",
   authDomain: "vvdouble-dash.firebaseapp.com",
@@ -154,69 +148,43 @@ var firebaseConfig = {
   messagingSenderId: "185408079991",
   appId: "1:185408079991:web:257f5bc39110f1611c1e72"
 };
+firebase.initializeApp(firebaseConfig);
 
-/* ====== 3. 預設資料（Firebase 尚未有資料時先顯示，之後每早任務會覆蓋） ====== */
-var DEFAULT_DATA = {
-  dataDate:"2026/06/11", month:"2026 年 6 月", dayOfMonth:11, daysInMonth:30,
-  kpis:[
-    {label:"官網本月業績", val:"NT$3,532,413", sub:"達標 50%（目標 7.0M）"},
-    {label:"門市合計", val:"NT$2,553,213", sub:"7 門市 + 蝦皮"},
-    {label:"官+門總業績", val:"NT$6,227,594", sub:"全通路本月累積"},
-    {label:"官網 ROAS", val:"32.7", sub:"廣告花費 NT$115,853"},
-    {label:"官網客單價", val:"NT$2,840", sub:"客單數 1,244"}
-  ],
-  overview:[
-    {tone:"blue", title:"官網", text:"本月累積 NT$3,532,413、達標 50%，領先時間進度。但高度集中於 6/2 新品上架日（單日 NT$2,589,418），近日日常單量偏低，需靠下一波檔期維持。"},
-    {tone:"amber", title:"全門市（7 間）", text:"合計 NT$3,074,760、占全站 47%。統一達標 63% 最穩；忠孝、新一中目標大但落後（31–32%），為本月達標主要風險。"},
-    {tone:"green", title:"行銷效率", text:"官網 ROAS 32.7、廣告收益占比 33.6%，體質健康。Google ROAS 27.8 明顯優於 FB 6.7，預算配置有調整空間。"}
-  ],
-  channels:[
-    {name:"官網", actual:3532413, target:7000000, aov:2840, orders:1244},
-    {name:"忠孝", actual:570464, target:1800000, aov:2987, orders:191},
-    {name:"統一", actual:566623, target:900000, aov:3256, orders:174},
-    {name:"桃園ATT", actual:234220, target:null, aov:2319, orders:101},
-    {name:"一中", actual:348859, target:800000, aov:2883, orders:121},
-    {name:"新一中", actual:521547, target:1700000, aov:2608, orders:200},
-    {name:"台南新天地", actual:314102, target:780000, aov:2804, orders:112},
-    {name:"新崛江", actual:518945, target:1200000, aov:3305, orders:157},
-    {name:"蝦皮", actual:5348, target:null, aov:891, orders:6}
-  ],
-  trend:{ labels:["7月","8月","9月","10月","11月","12月","26/1","2月","3月","4月","5月","6月*"],
-          values:[9434751,9987818,8616111,8828190,19019802,11242730,12110363,10242370,7150933,8011274,9607565,6227594] },
-  roas:{ labels:["1月","2月","3月","4月","5月","6月"], values:[24.03,22.14,20.02,20.15,25.59,32.68] },
-  recommendations:[
-    {level:"hi", title:"緊盯忠孝、新一中", text:"兩店月目標最大（1.8M／1.7M）但達標僅 31–32%，是本月最大缺口。優先檢視客流、檔期與人力。"},
-    {level:"hi", title:"官網別靠單日", text:"6/2 新品貢獻本月過半，扣除後動能偏弱。中旬／月底規劃第二波檔期維持熱度。"},
-    {level:"mid", title:"預算往 Google 傾斜", text:"Google ROAS 27.8 約為 FB 6.7 的 4 倍。評估把部分 FB 預算移向 Google，或重整 FB 素材與受眾。"},
-    {level:"mid", title:"門市衝量靠導客", text:"各店客單價 2.8–3.3k 已不低，瓶頸在來客數；以會員回購、門市活動拉客流。"},
-    {level:"mid", title:"複製統一打法", text:"統一客單價 3,256 全門市最高且達標領先，盤點其商品結構推廣到其他店。"},
-    {level:"lo", title:"補桃園 ATT 月目標", text:"目前未設目標，無法追蹤達標進度。"},
-    {level:"lo", title:"蝦皮去留決策", text:"本月僅 6 筆、NT$5,348，量能極低，評估收掉或集中資源。"}
-  ],
-  warnings:[
-    {level:"red", text:"忠孝、新一中 達標僅 31–32%，落後時間進度。"},
-    {level:"amber", text:"桃園 ATT、蝦皮 未設月目標，無法追蹤達標。"},
-    {level:"green", text:"統一 達標 63% 領先節奏，可作標竿。"}
-  ]
-};
+/* ====== 登入驗證：未登入只看得到登入框，看不到任何數字 ====== */
+function doLogin(){
+  var email = document.getElementById('email').value.trim();
+  var pw = document.getElementById('pw').value;
+  document.getElementById('err').textContent = '';
+  firebase.auth().signInWithEmailAndPassword(email, pw).catch(function(e){
+    document.getElementById('err').textContent = '登入失敗：帳號或密碼錯誤';
+    console.warn(e.code, e.message);
+  });
+}
+firebase.auth().onAuthStateChanged(function(user){
+  if (user){
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    subscribe();
+  } else {
+    document.getElementById('gate').style.display = 'flex';
+    document.getElementById('app').style.display = 'none';
+  }
+});
 
-/* ====== 4. 初始化與渲染 ====== */
-var charts = {};
-function initFirebase(){
-  var connected = false;
-  try {
-    if (firebaseConfig.databaseURL && firebaseConfig.databaseURL.indexOf('http') === 0){
-      firebase.initializeApp(firebaseConfig);
-      firebase.database().ref('/yeji').on('value', function(snap){
-        var d = snap.val();
-        render(d && d.channels ? d : DEFAULT_DATA);
-      });
-      connected = true;
-    }
-  } catch(e){ console.warn('Firebase 尚未設定或連線失敗，顯示預設資料', e); }
-  if (!connected) render(DEFAULT_DATA);
+var subscribed = false;
+function subscribe(){
+  if (subscribed) return; subscribed = true;
+  firebase.database().ref('/yeji').on('value', function(snap){
+    var d = snap.val();
+    if (d && d.channels) render(d);
+    else document.getElementById('dataNote').textContent = '尚未有資料，等今早任務同步後即會顯示。';
+  }, function(err){
+    document.getElementById('dataNote').textContent = '讀取資料失敗：' + err.code;
+  });
 }
 
+/* ====== 渲染 ====== */
+var charts = {};
 function fmt(n){ return "NT$" + Math.round(n).toLocaleString(); }
 function fmtM(n){ return "NT$" + (n/1000000).toFixed(2) + "M"; }
 
@@ -225,20 +193,17 @@ function render(d){
   document.getElementById('dataNote').textContent =
     "資料截至 " + d.dataDate + " · " + d.month + " 第 " + d.dayOfMonth + " / " + d.daysInMonth + " 天 · 每日早上自動更新";
 
-  // KPI
-  document.getElementById('kpiRow').innerHTML = d.kpis.map(function(k){
+  document.getElementById('kpiRow').innerHTML = (d.kpis||[]).map(function(k){
     return '<div class="card"><div class="kpi-label">'+k.label+'</div><div class="kpi-val">'+k.val+'</div><div class="kpi-sub">'+(k.sub||'')+'</div></div>';
   }).join('');
 
-  // 業績概況
   document.getElementById('ovDesc').textContent = "截至 " + d.dataDate + "（第 " + d.dayOfMonth + " / " + d.daysInMonth + " 天）的整體解讀";
   document.getElementById('ovRow').innerHTML = (d.overview||[]).map(function(o){
     var cls = o.tone==='amber'?' amber':o.tone==='green'?' green':'';
     return '<div class="ov-item'+cls+'"><h3>'+o.title+'</h3><p>'+o.text+'</p></div>';
   }).join('');
 
-  // 各通路（固定順序，依資料順序）
-  var ch = d.channels.map(function(c){ c.rate = c.target ? c.actual/c.target*100 : null; return c; });
+  var ch = (d.channels||[]).map(function(c){ c.rate = c.target ? c.actual/c.target*100 : null; return c; });
   var colorFor = function(r){ return r===null?'#c4c8ce':r>=pace?'#16a34a':r>=pace-8?'#f59e0b':'#dc2626'; };
   document.querySelector('#channelTable tbody').innerHTML = ch.map(function(c){
     var w = c.rate===null?0:Math.min(c.rate,100), col=colorFor(c.rate);
@@ -251,22 +216,17 @@ function render(d){
   }).join('');
   document.getElementById('paceNote').textContent = "時間進度基準 ≈ " + pace + "%（第 "+d.dayOfMonth+" 天）。綠＝領先，黃＝接近，紅＝落後。";
 
-  // 趨勢
-  drawLine('trendChart', d.trend.labels, d.trend.values.map(function(v){return v/1000000;}), '#2563eb', 'M');
-  // 占比：官網 vs 全門市（排除蝦皮）
+  if (d.trend) drawLine('trendChart', d.trend.labels, d.trend.values.map(function(v){return v/1000000;}), '#2563eb', 'M');
   var online = (ch.find(function(c){return c.name==='官網';})||{actual:0}).actual;
   var store = ch.filter(function(c){return c.name!=='官網'&&c.name!=='蝦皮';}).reduce(function(s,c){return s+c.actual;},0);
   drawShare(online, store);
-  // ROAS
-  drawBar('roasChart', d.roas.labels, d.roas.values);
+  if (d.roas) drawBar('roasChart', d.roas.labels, d.roas.values);
 
-  // 異常
   var dotColor = {red:'#dc2626',amber:'#f59e0b',green:'#16a34a'};
   document.getElementById('warnList').innerHTML = (d.warnings||[]).map(function(w){
     return '<li><span class="dot" style="background:'+(dotColor[w.level]||'#6b7280')+'"></span><span>'+w.text+'</span></li>';
   }).join('');
 
-  // 營運建議
   document.getElementById('recList').innerHTML = (d.recommendations||[]).map(function(r){
     var t = r.level==='hi'?'<span class="tag hi">高</span>':r.level==='mid'?'<span class="tag mid">中</span>':'<span class="tag lo">低</span>';
     return '<li><span>'+t+'<strong>'+r.title+'</strong>：'+r.text+'</span></li>';
