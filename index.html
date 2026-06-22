@@ -281,9 +281,7 @@ function pickSignals(d){
   return out.slice(0,3);
 }
 
-function exportPNG(){
-  var d = window.__yeji;
-  if (!d || !d.channels){ alert('資料尚未載入，請稍候再試'); return; }
+function buildExpHTML(d){
   var pace = Math.round(d.dayOfMonth/d.daysInMonth*100);
   var colorFor = function(r){ return r===null?'#c4c8ce':r>=pace?'#16a34a':r>=pace-8?'#f59e0b':'#dc2626'; };
   var FF = '-apple-system,"Segoe UI","PingFang TC","Microsoft JhengHei",sans-serif';
@@ -351,9 +349,14 @@ function exportPNG(){
 
   html += '<div style="text-align:center;font-size:11px;color:#b0b4b9;margin-top:16px">vvdouble-'+(''+d.dataDate).replace(/\//g,'-')+'.png</div>';
   html += '</div></div>';
+  return html;
+}
 
+function exportPNG(){
+  var d = window.__yeji;
+  if (!d || !d.channels){ alert('資料尚未載入，請稍候再試'); return; }
   var card = document.getElementById('expCard');
-  card.innerHTML = html;
+  card.innerHTML = buildExpHTML(d);
   html2canvas(card.firstChild, {scale:2, backgroundColor:'#ffffff'}).then(function(canvas){
     var link = document.createElement('a');
     link.download = 'vvdouble-'+(''+d.dataDate).replace(/\//g,'-')+'.png';
@@ -361,6 +364,20 @@ function exportPNG(){
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
     card.innerHTML = '';
   }).catch(function(e){ card.innerHTML=''; alert('匯出失敗：'+(e&&e.message)); });
+}
+
+/* 供每日排程自動化呼叫：產生 PNG dataURL 但不下載，結果存 window.__snap */
+function snapPNG(){
+  window.__snap = null; window.__snapErr = null; window.__snapDone = false; window.__snapName = null;
+  var d = window.__yeji;
+  if (!d || !d.channels){ window.__snapErr = 'NO_DATA'; window.__snapDone = true; return; }
+  var card = document.getElementById('expCard');
+  card.innerHTML = buildExpHTML(d);
+  html2canvas(card.firstChild, {scale:2, backgroundColor:'#ffffff'}).then(function(canvas){
+    window.__snap = canvas.toDataURL('image/png');
+    window.__snapName = 'vvdouble-'+(''+d.dataDate).replace(/\//g,'-')+'.png';
+    card.innerHTML = ''; window.__snapDone = true;
+  }).catch(function(e){ card.innerHTML=''; window.__snapErr = (e&&e.message)||'ERR'; window.__snapDone = true; });
 }
 </script>
 </body>
